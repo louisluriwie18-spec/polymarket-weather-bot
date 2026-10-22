@@ -3,3 +3,35 @@
   Independent human-readable ledger of all trade recommendations & resolutions.
 ================================================================================
 
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ [TRADE RECOMMENDATION]  2026-10-22 18:02:25 UTC                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Order ID:       dry_85337c425e9c479e9ab186d2ae24544f                         │
+│ Market ID:      6003528                                                      │
+│ Condition ID:   0x54d2d30467e9dbcbca518485725eaa8dc016ddf7e35c04b93514d43b292b6fd4│
+│ Event:          Highest temperature in Paris on October 23?                  │
+│ Question:       Will the highest temperature in Paris be 14°C on October 23? │
+│ Action:         BUY NO                                                       │
+│ Model Prob:      87.7%                                                       │
+│ Market Price:   $0.470 (47.0%)                                              │
+│ Edge Detected:  +40.7%                                                       │
+│ Stake:          $ 2.00 pUSD                                                   │
+│ Status:         OPEN                                                         │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ [TRADE RECOMMENDATION]  2026-10-22 18:02:25 UTC                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Order ID:       dry_e8b179db065b4791880fd37baa449b10                         │
+│ Market ID:      6003553                                                      │
+│ Condition ID:   0x98f62080bd82418ae539eb3bbef157bd171703517d69df1d05848804c6cfe73a│
+│ Event:          Highest temperature in Ankara on October 23?                 │
+│ Question:       Will the highest temperature in Ankara be 22°C on October 23?│
+│ Action:         BUY NO                                                       │
+│ Model Prob:      96.8%                                                       │
+│ Market Price:   $0.405 (40.5%)                                              │
+│ Edge Detected:  +56.3%                                                       │
+│ Stake:          $ 1.80 pUSD                                                   │
+│ Status:         OPEN                                                         │
+└──────────────────────────────────────────────────────────────────────────────┘
+
