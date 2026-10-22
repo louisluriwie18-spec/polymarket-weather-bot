@@ -6,6 +6,7 @@
 # Logs
 *.log
 *.log.*
+past_trades.txt
 
 # SQLite Databases
 *.db

@@ -1219,6 +1219,9 @@ async def _run_trading_loop_inner():
     trade_results: list[dict] = []
 
     try:
+        # Step 0: Check resolutions for any open positions from previous days
+        await run_resolution_check()
+
         # Step 1: Discover active temperature events
         events = await get_active_temperature_events()
 
@@ -1352,6 +1355,11 @@ async def run_resolution_check():
                         await update_trade_resolution(trade["market_id"], "VOID", 0.0)
                         print(f"  [!] VOID  market={trade['market_id'][:12]}...  (market voided)")
                         resolved += 1
+                        try:
+                            from trade_logger import log_resolution_text
+                            log_resolution_text(trade["market_id"], "VOID", 0.0, winner="VOID")
+                        except Exception:
+                            pass
                     except Exception as db_err:
                         logger.error("DB write failed marking VOID for %s: %s", trade["market_id"], db_err)
                     continue
@@ -1402,6 +1410,11 @@ async def run_resolution_check():
                         await update_trade_resolution(trade["market_id"], status, pnl)
                         _print_resolution_result(trade["market_id"], status, pnl)
                         resolved += 1
+                        try:
+                            from trade_logger import log_resolution_text
+                            log_resolution_text(trade["market_id"], status, pnl, winner=res.get("winner"))
+                        except Exception:
+                            pass
                     except Exception as db_err:
                         logger.error(
                             "DB write failed updating resolution for trade %s: %s. "
@@ -1434,16 +1447,17 @@ def check_resolution_time():
 async def run_scheduler():
     """
     Run the scheduler loop.
-      Weather trading:  every 5 minutes
-      Resolution check: daily at 12:00 UTC
+      Weather trading:  daily at 17:00 UTC (5:00 PM GMT) to predict tomorrow's weather
+      Resolution check: daily at 16:55 UTC (prior to trading) and 12:00 UTC
     """
-    schedule.every(5).minutes.do(schedule_job)
-    schedule.every(5).minutes.do(check_resolution_time)
+    schedule.every().day.at("17:00").do(schedule_job)
+    schedule.every().day.at("16:55").do(schedule_resolution_job)
+    schedule.every().day.at("12:00").do(schedule_resolution_job)
 
     print(_divider("-"))
-    print("  SCHEDULER ACTIVE")
-    print("  * Weather Trading Loop  — every 5 minutes")
-    print("  * Resolution Check      — 12:00 UTC daily")
+    print("  SCHEDULER ACTIVE (5:00 PM GMT / 17:00 UTC Daily Cycle)")
+    print("  * Weather Trading Loop  — 17:00 UTC daily (evaluates tomorrow's forecasts)")
+    print("  * Resolution Check      — 16:55 UTC & 12:00 UTC daily")
     print("  Press Ctrl+C to stop.")
     print(_divider("-"))
     print()
@@ -1528,18 +1542,25 @@ async def main():
 
 
 async def entrypoint():
-    """CLI router supporting --help, --check-resolutions, --accuracy, --once, or default full loop."""
+    """CLI router supporting --help, --check-resolutions, --accuracy, --once, --trades, or default full loop."""
     if "-h" in sys.argv or "--help" in sys.argv:
         print("""
 Polymarket Weather Trading Bot
 
 Usage:
-    python main.py                  Start continuous loop (scans every 15m, resolves daily)
-    python main.py --once           Run a single scan & trade evaluation cycle and exit
-    python main.py --accuracy       Update open trade resolutions and show performance audit
-    python main.py --check-resolutions  Run only the daily resolution check
+    python main.py                  Start daily continuous loop (runs 5:00 PM GMT / 17:00 UTC daily)
+    python main.py --once           Run a single scan & prediction cycle for tomorrow and exit
+    python main.py --accuracy       Update open trade resolutions and show accuracy & Brier audit
+    python main.py --check-resolutions  Run only the resolution check against open trades
+    python main.py --trades         Display the past_trades.txt audit log in terminal
     python main.py --help           Show this help message
 """)
+        return
+    if "--trades" in sys.argv or "--history" in sys.argv:
+        from trade_logger import LOG_FILE, _init_log_file
+        _init_log_file()
+        with open(LOG_FILE, "r", encoding="utf-8") as f:
+            print(f.read())
         return
     if "--check-resolutions" in sys.argv:
         await init_db()

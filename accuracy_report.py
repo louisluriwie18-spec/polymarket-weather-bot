@@ -62,6 +62,11 @@ async def update_unresolved_trades():
                 cur.execute("UPDATE trades SET status = 'VOID', pnl = 0.0 WHERE id = ?", (trade_id,))
                 resolved_count += 1
                 print(f"  [VOID] Market {market_id[:12]}")
+                try:
+                    from trade_logger import log_resolution_text
+                    log_resolution_text(market_id, "VOID", 0.0, winner="VOID")
+                except Exception:
+                    pass
             elif res.get("winner"):
                 winner = res["winner"].upper()
                 won = (side.upper() == winner)
@@ -70,6 +75,11 @@ async def update_unresolved_trades():
                 cur.execute("UPDATE trades SET status = ?, pnl = ? WHERE id = ?", (status, pnl, trade_id))
                 resolved_count += 1
                 print(f"  [{status}] Market {market_id[:12]} | Bet: {side} | Winner: {winner} | PnL: ${pnl:+.2f}")
+                try:
+                    from trade_logger import log_resolution_text
+                    log_resolution_text(market_id, status, pnl, winner=winner)
+                except Exception:
+                    pass
 
     conn.commit()
     conn.close()

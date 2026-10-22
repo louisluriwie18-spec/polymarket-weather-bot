@@ -196,3 +196,9 @@ async def log_trade(candidate, stake: float, order_id: str, status: str) -> None
         status=status,
         dry_run=DRY_RUN,  # Use config flag
     )
+
+    try:
+        from trade_logger import log_trade_text
+        log_trade_text(candidate, stake, order_id, status)
+    except Exception as log_err:
+        logger.warning("Could not append trade to past_trades.txt: %s", log_err)
