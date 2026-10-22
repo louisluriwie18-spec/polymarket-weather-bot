@@ -1342,7 +1342,10 @@ async def run_resolution_check():
 
         resolved = 0
         for trade in open_trades:
-            res = await get_market_resolution(trade["market_id"])
+            res = await get_market_resolution(
+                trade["market_id"],
+                condition_id=trade.get("condition_id"),  # CLOB hex key; None falls back to Gamma lookup
+            )
             if res and res["closed"]:
                 if res.get("voided"):
                     try:
@@ -1525,7 +1528,19 @@ async def main():
 
 
 async def entrypoint():
-    """CLI router supporting --check-resolutions, --accuracy, --once, or default full loop."""
+    """CLI router supporting --help, --check-resolutions, --accuracy, --once, or default full loop."""
+    if "-h" in sys.argv or "--help" in sys.argv:
+        print("""
+Polymarket Weather Trading Bot
+
+Usage:
+    python main.py                  Start continuous loop (scans every 15m, resolves daily)
+    python main.py --once           Run a single scan & trade evaluation cycle and exit
+    python main.py --accuracy       Update open trade resolutions and show performance audit
+    python main.py --check-resolutions  Run only the daily resolution check
+    python main.py --help           Show this help message
+""")
+        return
     if "--check-resolutions" in sys.argv:
         await init_db()
         await run_resolution_check()

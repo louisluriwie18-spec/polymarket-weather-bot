@@ -1,4 +1,15 @@
-"""Full end-to-end validation of the complete bot pipeline."""
+"""
+validate.py — Standalone Diagnostic & Validation Utility.
+
+This script performs quick end-to-end sanity checks of the bot's core pipeline:
+1. Validates temperature format parsing across all supported Celsius and Fahrenheit patterns.
+2. Queries the live Polymarket Gamma API to verify market discovery and event filtering.
+3. Tests tomorrow-target date matching logic.
+
+This is a developer verification tool and does not place trades or mutate database state.
+Run via:
+    python validate.py
+"""
 import asyncio
 import logging
 import re

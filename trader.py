@@ -184,6 +184,7 @@ async def log_trade(candidate, stake: float, order_id: str, status: str) -> None
     """
     await log_trade_db(
         market_id=candidate.market_id,
+        condition_id=candidate.condition_id,
         event_title=candidate.event_title,
         question=candidate.question,
         side=candidate.side,

@@ -36,6 +36,10 @@ async def init_db():
     NOTE: No automatic schema migration. If you add a column, run:
       ALTER TABLE trades ADD COLUMN new_col TYPE DEFAULT value;
     on the existing trades.db before restarting the bot.
+
+    Schema v2 change: added `condition_id` column (CLOB hex key) so the
+    3-tier resolution check can hit the authoritative CLOB winners endpoint
+    even when the Gamma API `resolution` field is NULL.
     """
     async with aiosqlite.connect(DB_FILE, timeout=10.0) as conn:
         # Weather bot trade recommendations
@@ -44,6 +48,7 @@ async def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
                 market_id TEXT NOT NULL,
+                condition_id TEXT DEFAULT NULL,
                 event_title TEXT NOT NULL,
                 question TEXT NOT NULL,
                 side TEXT NOT NULL,
@@ -59,6 +64,13 @@ async def init_db():
         """)
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_market_id ON trades(market_id)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status)")
+
+        # Ensure condition_id column exists (schema migration for existing databases)
+        async with conn.execute("PRAGMA table_info(trades)") as cursor:
+            cols = [row[1] async for row in cursor]
+            if "condition_id" not in cols:
+                await conn.execute("ALTER TABLE trades ADD COLUMN condition_id TEXT DEFAULT NULL")
+
         # Runtime settings (key-value store)
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS bot_settings (
@@ -108,10 +120,15 @@ async def set_setting(key: str, value: str) -> None:
 
 async def log_trade_db(
     market_id, event_title, question, side, stake,
-    price, our_prob, edge, order_id, status="OPEN", dry_run=False
+    price, our_prob, edge, order_id, status="OPEN", dry_run=False,
+    condition_id=None,
 ):
     """
     Insert a trade record into the `trades` table.
+
+    condition_id: the CLOB hex key (e.g. '0xfa361...') used by the 3-tier
+    resolution check to hit the authoritative CLOB winners endpoint when the
+    Gamma API `resolution` field is NULL (common for weather markets).
 
     RAISES on any DB error — callers must handle this.
     A write failure means the recommendation has no local record,
@@ -121,11 +138,11 @@ async def log_trade_db(
     async with aiosqlite.connect(DB_FILE, timeout=10.0) as conn:
         await conn.execute("""
             INSERT INTO trades (
-                timestamp, market_id, event_title, question, side,
+                timestamp, market_id, condition_id, event_title, question, side,
                 stake, price, our_probability, edge, order_id, status, dry_run
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            now, market_id, event_title, question, side,
+            now, market_id, condition_id, event_title, question, side,
             stake, price, our_prob, edge, order_id, status, int(dry_run)
         ))
         await conn.commit()

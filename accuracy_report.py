@@ -41,7 +41,7 @@ async def update_unresolved_trades():
         return
 
     cur = conn.cursor()
-    cur.execute("SELECT id, market_id, side, stake, price FROM trades WHERE status = 'OPEN'")
+    cur.execute("SELECT id, market_id, condition_id, side, stake, price FROM trades WHERE status = 'OPEN'")
     open_trades = cur.fetchall()
 
     if not open_trades:
@@ -53,8 +53,10 @@ async def update_unresolved_trades():
     resolved_count = 0
 
     for t in open_trades:
-        trade_id, market_id, side, stake, price = t["id"], t["market_id"], t["side"], t["stake"], t["price"]
-        res = await get_market_resolution(market_id)
+        trade_id, market_id, condition_id, side, stake, price = (
+            t["id"], t["market_id"], t["condition_id"], t["side"], t["stake"], t["price"]
+        )
+        res = await get_market_resolution(market_id, condition_id=condition_id)
         if res and res.get("closed"):
             if res.get("voided"):
                 cur.execute("UPDATE trades SET status = 'VOID', pnl = 0.0 WHERE id = ?", (trade_id,))
