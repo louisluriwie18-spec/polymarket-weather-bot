@@ -614,7 +614,7 @@ async def scan_event_for_edges(
         try:
             tz = zoneinfo.ZoneInfo(tz_name)
         except Exception:
-            tz = zoneinfo.ZoneInfo("UTC")
+            tz = timezone.utc
         local_tomorrow = (datetime.now(tz) + timedelta(days=1)).date()
 
         # Step 2: Verify event is for TOMORROW (local timezone)

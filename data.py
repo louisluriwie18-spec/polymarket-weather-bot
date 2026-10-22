@@ -946,7 +946,7 @@ async def get_metno_forecast(
                 try:
                     tz = zoneinfo.ZoneInfo(tz_name)
                 except Exception:
-                    tz = zoneinfo.ZoneInfo("UTC")
+                    tz = timezone.utc
 
                 for ts in timeseries:
                     time_str = ts.get("time", "")

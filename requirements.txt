@@ -4,5 +4,6 @@ numpy>=1.26.0
 schedule>=1.2.0
 python-dotenv>=1.0.0
 aiosqlite>=0.20.0
+tzdata>=2026.1
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
