@@ -78,6 +78,8 @@ from model import (
     detect_edge,
     parse_group_item_title,
     run_forecast_model,
+    compute_event_super_forecast,
+    run_bayesian_model,
 )
 from trader import (
     check_trade_cooldown,
@@ -816,9 +818,9 @@ async def scan_event_for_edges(
         else:
             logger.warning("  QuantGroup:  SKIPPED (insufficient recent series or models failed)")
 
-        # METAR soft bound: blend today's observed temperature into forecast means.
-        # Evening METAR anchors tomorrow's conditions (after 7 PM local, the day's
-        # high/low is largely decided). Blend at 20% for max markets, 15% for min.
+        # METAR soft bound: for day-ahead (tomorrow's) markets, current daytime temperature
+        # must NOT anchor tomorrow's forecast. Only in late evening (local hour >= 21) does
+        # slight atmospheric persistence (5%) carry into tomorrow's airmass trajectory.
         if forecast_pn and isinstance(forecast_pn.get("metar_temp_c"), float):
             metar_now = forecast_pn["metar_temp_c"]
             try:
@@ -827,32 +829,29 @@ async def scan_event_for_edges(
             except Exception:
                 local_hour = datetime.now(timezone.utc).hour
 
-            # Use a fixed climatological diurnal range, NOT std(historical daily maxima).
-            # std(daily maxima over 25 years) measures interannual variability (~2-5°C),
-            # NOT the within-day temperature swing (~8-15°C). The old formula
-            # max(4.0, hist_std * 1.5) was conceptually wrong and produced anchors
-            # that were too close to the current METAR reading.
-            if temp_type == "max":
-                metar_anchor = metar_now + 11.0 * 0.5   # typical diurnal range for max markets
-                blend = 0.20 if local_hour >= 19 else 0.10
+            if local_hour >= 21:
+                blend = 0.05  # light persistence blend for day-ahead forecast
+                metar_anchor = metar_now + (3.0 if temp_type == "max" else -2.0)
+
+                def _blend(f, anchor, w):
+                    return {**f, "mean": (1.0 - w) * f["mean"] + w * anchor} if f else None
+
+                forecast_om = _blend(forecast_om, metar_anchor, blend)
+                forecast_wa = _blend(forecast_wa, metar_anchor, blend)
+                forecast_mn = _blend(forecast_mn, metar_anchor, blend)
+                forecast_pn = _blend(forecast_pn, metar_anchor, blend)
+                forecast_ec = _blend(forecast_ec, metar_anchor, blend)
+                forecast_gfs    = _blend(forecast_gfs,    metar_anchor, blend)
+                forecast_ukmet  = _blend(forecast_ukmet,  metar_anchor, blend)
+                logger.info(
+                    "  METAR late-evening persistence: %.1f°C → anchor=%.1f°C  blend=%.0f%%  (local hour %02d)",
+                    metar_now, metar_anchor, blend * 100, local_hour,
+                )
             else:
-                metar_anchor = metar_now - 9.0 * 0.3    # typical diurnal range for min markets
-                blend = 0.20 if local_hour >= 20 else 0.08
-
-            def _blend(f, anchor, w):
-                return {**f, "mean": (1.0 - w) * f["mean"] + w * anchor} if f else None
-
-            forecast_om = _blend(forecast_om, metar_anchor, blend)
-            forecast_wa = _blend(forecast_wa, metar_anchor, blend)
-            forecast_mn = _blend(forecast_mn, metar_anchor, blend)
-            forecast_pn = _blend(forecast_pn, metar_anchor, blend)
-            forecast_ec = _blend(forecast_ec, metar_anchor, blend)
-            forecast_gfs    = _blend(forecast_gfs,    metar_anchor, blend)
-            forecast_ukmet  = _blend(forecast_ukmet,  metar_anchor, blend)
-            logger.info(
-                "  METAR anchor: %.1f°C → anchor=%.1f°C  blend=%.0f%%  (local hour %02d)",
-                metar_now, metar_anchor, blend * 100, local_hour,
-            )
+                logger.debug(
+                    "  METAR anchor skipped for day-ahead forecast (local hour %02d < 21)",
+                    local_hour,
+                )
 
         # Check forecast agreement — pass hist_std for dynamic threshold
         # ddof=1: sample std (unbiased) — consistent with calculate_likelihood and
@@ -874,6 +873,26 @@ async def scan_event_for_edges(
                 title, disagreement,
             )
             return []
+
+        # Pre-compute the super-forecast, event confidence, and climate-corrected
+        # historical data ONCE for this event instead of recomputing for each bin!
+        combined_forecast, event_confidence, hist_corrected = compute_event_super_forecast(
+            historical_data=historical_data,
+            forecast_ec=forecast_ec,
+            forecast_om=forecast_om,
+            forecast_gfs=forecast_gfs,
+            forecast_ukmet=forecast_ukmet,
+            forecast_mn=forecast_mn,
+            forecast_pn=forecast_pn,
+            forecast_wa=forecast_wa,
+            forecast_local=forecast_local,
+            ensemble_std=ensemble_std,
+        )
+        if combined_forecast is None or not hist_corrected:
+            logger.warning("SKIP EVENT: %s — failed to produce valid combined forecast", title)
+            return []
+
+        current_year_val = datetime.now(timezone.utc).year
 
         # Two-pass normalisation — bins are mutually exclusive and exhaustive
         # (exactly one bin resolves YES). Independent Bayesian runs can sum to >1,
@@ -963,21 +982,11 @@ async def scan_event_for_edges(
                 )
                 continue
 
-            # Run Bayesian model — raw (un-normalised) posterior for this bin
-            raw_yes, raw_no, confidence = run_forecast_model(
-                historical_data=historical_data,
-                forecast_om=forecast_om,
-                forecast_wa=forecast_wa,
-                forecast_mn=forecast_mn,
-                forecast_pn=forecast_pn,
-                low_bound=low_bound,
-                high_bound=high_bound,
-                ensemble_std=ensemble_std,
-                forecast_ec=forecast_ec,
-                forecast_gfs=forecast_gfs,
-                forecast_ukmet=forecast_ukmet,
-                forecast_local=forecast_local,
+            # Fast, per-bin Bayesian posterior using pre-computed super-forecast
+            raw_yes, raw_no = run_bayesian_model(
+                hist_corrected, combined_forecast, low_bound, high_bound, current_year_val
             )
+            confidence = event_confidence
 
             bin_results.append((
                 sub, group_title, condition_id, market_id,
@@ -1515,9 +1524,27 @@ async def main():
     await run_scheduler()
 
 
+async def entrypoint():
+    """CLI router supporting --check-resolutions, --accuracy, --once, or default full loop."""
+    if "--check-resolutions" in sys.argv:
+        await init_db()
+        await run_resolution_check()
+        return
+    if "--accuracy" in sys.argv:
+        from accuracy_report import update_unresolved_trades, generate_accuracy_report
+        await update_unresolved_trades()
+        generate_accuracy_report()
+        return
+    if "--once" in sys.argv:
+        await init_db()
+        await run_trading_loop()
+        return
+    await main()
+
+
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        asyncio.run(entrypoint())
     except KeyboardInterrupt:
         print()
         print(_divider("-"))

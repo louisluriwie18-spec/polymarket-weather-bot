@@ -223,9 +223,12 @@ def _apply_climate_correction(
                         "  Small-dataset IQR filter: %d/%d points removed",
                         n_removed, len(data),
                     )
+                filtered.sort(key=lambda x: x[0])
                 return filtered
-        # Fallback: not enough points to filter, return as-is
-        return [(float(d[0]), d[1]) for d in data]
+        # Fallback: not enough points to filter, return as-is (sorted)
+        unfiltered = [(float(d[0]), d[1]) for d in data]
+        unfiltered.sort(key=lambda x: x[0])
+        return unfiltered
 
     # Step 1: Fit linear climate trend
     slope, intercept, r_value, p_value, _ = linregress(years_f, temps)
@@ -580,6 +583,102 @@ def ivw_combine_forecasts(
     return combined_mean, combined_sigma
 
 
+def compute_event_super_forecast(
+    historical_data: list[tuple[int, float]],
+    forecast_ec: dict[str, float] | None = None,
+    forecast_om: dict[str, float] | None = None,
+    forecast_gfs: dict[str, float] | None = None,
+    forecast_ukmet: dict[str, float] | None = None,
+    forecast_mn: dict[str, float] | None = None,
+    forecast_pn: dict[str, float] | None = None,
+    forecast_wa: dict[str, float] | None = None,
+    forecast_local: dict[str, float] | None = None,
+    weights: dict[str, float] | None = None,
+    ensemble_std: float | None = None,
+) -> tuple[dict[str, float] | None, float, list[tuple[float, float]]]:
+    """
+    Pre-compute the IVW super-forecast, event confidence score, and
+    climate-corrected historical data ONCE for an entire event.
+    Avoids re-running IVW and climate-correction redundantly across N sub-market bins.
+
+    Returns:
+        (combined_forecast_dict or None, confidence, historical_data_corrected)
+    """
+    if weights is None:
+        weights = SOURCE_WEIGHTS
+
+    current_year = datetime.now(timezone.utc).year
+    historical_data_corrected = _apply_climate_correction(historical_data, current_year)
+    if not historical_data_corrected:
+        logger.warning("No clean historical data after climate correction — returning None")
+        return None, 0.1, []
+
+    combined_mean, combined_sigma = ivw_combine_forecasts(
+        forecast_ec=forecast_ec,
+        forecast_om=forecast_om,
+        forecast_gfs=forecast_gfs,
+        forecast_ukmet=forecast_ukmet,
+        forecast_mn=forecast_mn,
+        forecast_pn=forecast_pn,
+        forecast_wa=forecast_wa,
+        forecast_local=forecast_local,
+        weights=weights,
+    )
+
+    if combined_mean == 0.0 and combined_sigma == 5.0:
+        return None, 0.1, historical_data_corrected
+
+    if ensemble_std is not None:
+        # Blend IVW combined uncertainty with ICON ensemble spread rather than throwing IVW out
+        combined_sigma = math.sqrt(0.5 * (combined_sigma ** 2) + 0.5 * (ensemble_std ** 2))
+        combined_sigma = max(0.5, combined_sigma)
+        logger.info(
+            "  Ensemble spread (%.2f°C) blended with IVW σ → combined σ=%.2f°C",
+            ensemble_std, combined_sigma,
+        )
+
+    combined_forecast = {"mean": combined_mean, "std": combined_sigma}
+
+    available = [
+        f for f in [forecast_ec, forecast_om, forecast_gfs, forecast_ukmet,
+                    forecast_mn, forecast_local, forecast_pn, forecast_wa]
+        if f is not None
+    ]
+    n_sources = len(available)
+    means = [f["mean"] for f in available]
+
+    if n_sources >= 2:
+        spread = max(means) - min(means)
+        spread_factor = max(0.0, 1.0 - spread / CONFIDENCE_SPREAD_DIVISOR)
+    elif n_sources == 1:
+        spread_factor = 0.5
+    else:
+        return None, 0.1, historical_data_corrected
+
+    if ensemble_std is not None:
+        ens_factor = max(0.0, 1.0 - ensemble_std / 3.0)
+    else:
+        ens_factor = None
+
+    unique_hist_years = len({int(y) for y, _ in historical_data_corrected})
+    hist_factor = min(1.0, unique_hist_years / 20.0)
+
+    if ens_factor is not None:
+        confidence = max(0.1, min(0.95,
+            spread_factor * 0.50 + ens_factor * 0.35 + hist_factor * 0.15
+        ))
+    else:
+        confidence = max(0.1, min(0.95,
+            spread_factor * 0.85 + hist_factor * 0.15
+        ))
+
+    logger.info(
+        "Super-forecast pre-computed: μ=%.2f°C  σ=%.2f°C  conf=%.2f  (sources=%d)",
+        combined_mean, combined_sigma, confidence, n_sources,
+    )
+    return combined_forecast, confidence, historical_data_corrected
+
+
 def run_forecast_model(
     historical_data: list[tuple[int, float]],
     forecast_om: dict[str, float] | None,
@@ -597,45 +696,9 @@ def run_forecast_model(
 ) -> tuple[float, float, float]:
     """
     Run the full forecasting pipeline using IVW super-forecast + one Bayesian run.
-
-    Pipeline:
-      1. Apply climate trend correction + IQR/MAD outlier removal to historical data
-      2. IVW-combine all available NWP forecasts into one super-forecast (μ_nwp, σ_nwp)
-         This is the BLUE (Best Linear Unbiased Estimator) for independent Gaussians.
-      3. If ICON ensemble spread available, use it as σ_nwp (more accurate than IVW-derived σ)
-      4. Run ONE Bayesian model:  prior(historical) × likelihood(μ_nwp, σ_nwp) → posterior
-      5. Confidence score from inter-source spread + ensemble uncertainty + historical coverage
-
-    Why IVW instead of 7 separate Bayesian runs:
-      The old method computed the same historical prior 7 times (once per source)
-      then averaged posteriors. This double-counts history and violates the
-      Bayesian principle that the prior should be applied exactly once.
-      IVW first combines the forecast likelihoods optimally, THEN applies
-      the prior once — mathematically correct and cleaner.
-
-    Args (unchanged for backward compatibility):
-        historical_data: list[(year, temp)] from get_historical_temps.
-        forecast_om/wa/mn/pn/ec/gfs/ukmet: NWP forecast dicts or None.
-        low_bound/high_bound: temperature bin boundaries.
-        weights: source weights dict (defaults to SOURCE_WEIGHTS).
-        ensemble_std: ICON ensemble spread in °C; overrides IVW-derived σ when set.
-
-    Returns:
-        (final_yes, final_no, confidence) where confidence ∈ [0.1, 0.95].
     """
-    if weights is None:
-        weights = SOURCE_WEIGHTS
-
-    current_year = datetime.now(timezone.utc).year
-
-    # Step 1: Climate-correct + outlier-filter historical data
-    historical_data_corrected = _apply_climate_correction(historical_data, current_year)
-    if not historical_data_corrected:
-        logger.warning("No clean historical data after climate correction — returning 0.5/0.5")
-        return 0.5, 0.5, 0.1
-
-    # Step 2: IVW super-forecast
-    combined_mean, combined_sigma = ivw_combine_forecasts(
+    combined_forecast, confidence, hist_corr = compute_event_super_forecast(
+        historical_data=historical_data,
         forecast_ec=forecast_ec,
         forecast_om=forecast_om,
         forecast_gfs=forecast_gfs,
@@ -645,69 +708,14 @@ def run_forecast_model(
         forecast_wa=forecast_wa,
         forecast_local=forecast_local,
         weights=weights,
+        ensemble_std=ensemble_std,
     )
-
-    if combined_mean == 0.0 and combined_sigma == 5.0:
-        # All sources failed — IVW returned the fallback sentinel
+    if combined_forecast is None or not hist_corr:
         return 0.5, 0.5, 0.1
 
-    # Step 3: Use ensemble spread as sigma if available
-    # The 40-member ICON ensemble spread is a direct measurement of forecast
-    # uncertainty, more reliable than the IVW-derived σ for the combined forecast.
-    if ensemble_std is not None:
-        combined_sigma = ensemble_std
-        logger.info(
-            "  Ensemble spread overrides IVW σ: %.2f°C → %.2f°C",
-            math.sqrt(1.0 / max(1e-10, 1.0 / (combined_sigma ** 2))), ensemble_std,
-        )
-
-    combined_forecast = {"mean": combined_mean, "std": combined_sigma}
-
-    # Step 4: ONE Bayesian update: prior(historical) × likelihood(combined_forecast)
+    current_year = datetime.now(timezone.utc).year
     posterior_yes, posterior_no = run_bayesian_model(
-        historical_data_corrected, combined_forecast, low_bound, high_bound, current_year
-    )
-
-    # Step 5: Confidence score
-    available = [
-        f for f in [forecast_ec, forecast_om, forecast_gfs, forecast_ukmet,
-                    forecast_mn, forecast_local, forecast_pn, forecast_wa]
-        if f is not None
-    ]
-    n_sources = len(available)
-    means = [f["mean"] for f in available]
-
-    if n_sources >= 2:
-        spread = max(means) - min(means)
-        spread_factor = max(0.0, 1.0 - spread / CONFIDENCE_SPREAD_DIVISOR)
-    elif n_sources == 1:
-        spread_factor = 0.5   # single source — moderate base confidence
-    else:
-        return 0.5, 0.5, 0.1  # no sources
-
-    if ensemble_std is not None:
-        ens_factor = max(0.0, 1.0 - ensemble_std / 3.0)
-    else:
-        ens_factor = None
-
-    # Historical data quality: 20 years of verified history = full confidence
-    unique_hist_years = len({int(y) for y, _ in historical_data_corrected})
-    hist_factor = min(1.0, unique_hist_years / 20.0)
-
-    if ens_factor is not None:
-        confidence = max(0.1, min(0.95,
-            spread_factor * 0.50 + ens_factor * 0.35 + hist_factor * 0.15
-        ))
-    else:
-        confidence = max(0.1, min(0.95,
-            spread_factor * 0.85 + hist_factor * 0.15
-        ))
-
-    logger.info(
-        "Bayesian result: P(YES)=%.4f  P(NO)=%.4f  conf=%.2f"
-        "  (sources=%d  μ_nwp=%.1f°C  σ_nwp=%.2f°C)",
-        posterior_yes, posterior_no, confidence,
-        n_sources, combined_mean, combined_sigma,
+        hist_corr, combined_forecast, low_bound, high_bound, current_year
     )
     return posterior_yes, posterior_no, confidence
 
@@ -875,18 +883,20 @@ def check_forecast_agreement(
     forecast_local: dict[str, float] | None = None,
 ) -> tuple[bool, float]:
     """
-    Check if all available forecast sources agree within acceptable bounds.
-    Uses max spread across all sources (ECMWF, OM, GFS, UKMET, MN, PN, WA, QuantEnsemble).
+    Check if physical NWP forecast sources agree within acceptable bounds.
+    Note: forecast_local (QuantEnsemble) is an auto-regressive statistical model
+    without atmospheric physics; it is logged for observability but excluded from
+    the spread calculation to avoid false rejections during frontal airmass transitions.
     """
-    available = [
+    nwp_sources = [
         f for f in (forecast_ec, forecast_gfs, forecast_ukmet,
-                    forecast_om, forecast_wa, forecast_mn, forecast_pn, forecast_local)
+                    forecast_om, forecast_wa, forecast_mn, forecast_pn)
         if f is not None
     ]
-    if len(available) < 2:
-        return True, 0.0  # Can't disagree with only one (or zero) source
+    if len(nwp_sources) < 2:
+        return True, 0.0  # Can't disagree with fewer than 2 physical sources
 
-    means = [f["mean"] for f in available]
+    means = [f["mean"] for f in nwp_sources]
     spread = max(means) - min(means)
 
     # Fix 5: dynamic threshold
@@ -903,8 +913,6 @@ def check_forecast_agreement(
 
     if not agreement_ok:
         source_labels = []
-        # Include ALL sources so the operator can see which model is the outlier.
-        # ECMWF/GFS/UKMET have the highest weights and are the most likely culprits.
         if forecast_ec is not None:
             source_labels.append(f"EC={forecast_ec['mean']:.1f}°C")
         if forecast_gfs is not None:
@@ -918,11 +926,11 @@ def check_forecast_agreement(
         if forecast_mn is not None:
             source_labels.append(f"MN={forecast_mn['mean']:.1f}°C")
         if forecast_pn is not None:
-            source_labels.append(f"PN={forecast_pn['mean']:.1f}C")
+            source_labels.append(f"PN={forecast_pn['mean']:.1f}°C")
         if forecast_local is not None:
-            source_labels.append(f"QUANT={forecast_local['mean']:.1f}C")
+            source_labels.append(f"QUANT={forecast_local['mean']:.1f}°C (stat)")
         logger.warning(
-            "⚠ Forecast disagreement: %s (spread=%.1f°C, threshold=%.2f°C)",
+            "⚠ NWP forecast disagreement: %s (NWP spread=%.1f°C, threshold=%.2f°C)",
             " | ".join(source_labels), spread, effective_threshold,
         )
 

@@ -320,7 +320,18 @@ async def get_active_temperature_events() -> list[dict]:
     events = []
     cursor = None
     limit = 100
+    sem = asyncio.Semaphore(10)
     async with httpx.AsyncClient() as client:
+        async def fetch_detail(evt):
+            eid = evt.get("id")
+            if not eid:
+                return evt
+            async with sem:
+                r = await _get_with_retry(client, f"https://gamma-api.polymarket.com/events/{eid}")
+                if r and r.status_code == 200:
+                    return r.json()
+                return evt
+
         while True:
             url = (
                 f"https://gamma-api.polymarket.com/events/keyset"
@@ -346,17 +357,6 @@ async def get_active_temperature_events() -> list[dict]:
                     
                 matching_events = [e for e in events_list if "temperature" in e.get("title", "").lower()]
                 if matching_events:
-                    sem = asyncio.Semaphore(10)
-                    async def fetch_detail(evt):
-                        eid = evt.get("id")
-                        if not eid:
-                            return evt
-                        async with sem:
-                            r = await _get_with_retry(client, f"https://gamma-api.polymarket.com/events/{eid}")
-                            if r and r.status_code == 200:
-                                return r.json()
-                            return evt
-
                     detailed_results = await asyncio.gather(
                         *[fetch_detail(e) for e in matching_events],
                         return_exceptions=True,
@@ -380,6 +380,7 @@ async def get_active_temperature_events() -> list[dict]:
 
 CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "historical_cache.json")
 _historical_cache = None
+_historical_cache_lock = asyncio.Lock()
 
 def _load_historical_cache():
     global _historical_cache
@@ -395,10 +396,23 @@ def _load_historical_cache():
     else:
         _historical_cache = {}
 
+async def _save_historical_cache_async():
+    """Asynchronously and safely save historical cache to disk."""
+    async with _historical_cache_lock:
+        try:
+            tmp_file = f"{CACHE_FILE}.tmp"
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump(_historical_cache, f)
+            os.replace(tmp_file, CACHE_FILE)
+        except Exception as e:
+            logger.error("Failed to save historical cache: %s", e)
+
 def _save_historical_cache():
     try:
-        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        tmp_file = f"{CACHE_FILE}.tmp"
+        with open(tmp_file, "w", encoding="utf-8") as f:
             json.dump(_historical_cache, f)
+        os.replace(tmp_file, CACHE_FILE)
     except Exception as e:
         logger.error("Failed to save historical cache: %s", e)
 
