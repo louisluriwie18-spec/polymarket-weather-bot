@@ -32,7 +32,9 @@ def _get_db():
 
 
 async def update_unresolved_trades():
-    """Check Polymarket Gamma API for any OPEN trades and resolve them."""
+    """Check Polymarket Gamma & CLOB APIs for any OPEN trades and resolve them."""
+    from data import get_market_resolution
+
     conn = _get_db()
     if not conn:
         print("No database found.")
@@ -50,27 +52,22 @@ async def update_unresolved_trades():
     print(f"Checking resolution for {len(open_trades)} OPEN trade(s)...")
     resolved_count = 0
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        for t in open_trades:
-            trade_id, market_id, side, stake, price = t["id"], t["market_id"], t["side"], t["stake"], t["price"]
-            url = f"https://gamma-api.polymarket.com/markets/{market_id}"
-            try:
-                r = await client.get(url)
-                if r.status_code == 200:
-                    data = r.json()
-                    if data.get("closed"):
-                        resolution = (data.get("resolution") or "").upper()
-                        if resolution in ("CANCELLED", "VOID", "INVALID"):
-                            cur.execute("UPDATE trades SET status = 'VOID', pnl = 0.0 WHERE id = ?", (trade_id,))
-                            resolved_count += 1
-                        elif resolution:
-                            won = (side.upper() == resolution)
-                            status = "WON" if won else "LOST"
-                            pnl = (stake / price - stake) if won else -stake
-                            cur.execute("UPDATE trades SET status = ?, pnl = ? WHERE id = ?", (status, pnl, trade_id))
-                            resolved_count += 1
-            except Exception as e:
-                print(f"Error checking market {market_id[:12]}: {e}")
+    for t in open_trades:
+        trade_id, market_id, side, stake, price = t["id"], t["market_id"], t["side"], t["stake"], t["price"]
+        res = await get_market_resolution(market_id)
+        if res and res.get("closed"):
+            if res.get("voided"):
+                cur.execute("UPDATE trades SET status = 'VOID', pnl = 0.0 WHERE id = ?", (trade_id,))
+                resolved_count += 1
+                print(f"  [VOID] Market {market_id[:12]}")
+            elif res.get("winner"):
+                winner = res["winner"].upper()
+                won = (side.upper() == winner)
+                status = "WON" if won else "LOST"
+                pnl = (stake / price - stake) if won else -stake
+                cur.execute("UPDATE trades SET status = ?, pnl = ? WHERE id = ?", (status, pnl, trade_id))
+                resolved_count += 1
+                print(f"  [{status}] Market {market_id[:12]} | Bet: {side} | Winner: {winner} | PnL: ${pnl:+.2f}")
 
     conn.commit()
     conn.close()

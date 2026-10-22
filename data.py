@@ -288,8 +288,8 @@ async def get_city_coordinates(city_name: str) -> dict | None:
 
 # ── Market data ────────────────────────────────────────────────────────────────
 
-async def get_market_resolution(market_id: str) -> dict | None:
-    """Fetch market resolution from Gamma API.
+async def get_market_resolution(market_id: str, condition_id: str | None = None) -> dict | None:
+    """Fetch market resolution from Gamma API and CLOB API.
 
     Returns:
         {"closed": True, "winner": "YES"|"NO"} on a normal resolution.
@@ -303,13 +303,41 @@ async def get_market_resolution(market_id: str) -> dict | None:
             if resp is not None and resp.status_code == 200:
                 data = resp.json()
                 if data.get("closed"):
+                    # 1. Direct explicit resolution field
                     resolution = (data.get("resolution") or "").upper()
                     if resolution in ("CANCELLED", "VOID", "INVALID"):
                         return {"closed": True, "winner": None, "voided": True}
-                    
-                    if resolution:
+                    if resolution in ("YES", "NO"):
                         return {"closed": True, "winner": resolution}
-                    return None  # closed=True but still settling
+
+                    # 2. Check Gamma outcomePrices (winner price converges to 1.0, loser to 0.0)
+                    prices_str = data.get("outcomePrices")
+                    outcomes_str = data.get("outcomes")
+                    if prices_str and outcomes_str:
+                        try:
+                            prices = [float(p) for p in json.loads(prices_str)]
+                            outcomes = [o.upper() for o in json.loads(outcomes_str)]
+                            for idx, p in enumerate(prices):
+                                if p >= 0.90 and idx < len(outcomes):
+                                    return {"closed": True, "winner": outcomes[idx]}
+                        except Exception:
+                            pass
+
+                    # 3. Check CLOB API condition tokens for authoritative winner flag
+                    cid = condition_id or data.get("conditionId")
+                    if cid:
+                        clob_url = f"https://clob.polymarket.com/markets/{cid}"
+                        clob_resp = await _get_with_retry(client, clob_url)
+                        if clob_resp is not None and clob_resp.status_code == 200:
+                            clob_data = clob_resp.json()
+                            for token in clob_data.get("tokens", []):
+                                if token.get("winner") is True:
+                                    winner_side = (token.get("outcome") or "").upper()
+                                    if winner_side:
+                                        return {"closed": True, "winner": winner_side}
+
+                    # If closed=True but prices are all 0 or not yet settled
+                    return None
         except Exception as e:
             logger.error("Error fetching resolution for market %s: %s", market_id, e)
     return None
