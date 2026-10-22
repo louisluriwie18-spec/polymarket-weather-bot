@@ -1,0 +1,5 @@
+================================================================================
+                POLYMARKET WEATHER BOT — PAST TRADES AUDIT LOG
+  Independent human-readable ledger of all trade recommendations & resolutions.
+================================================================================
+

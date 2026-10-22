@@ -6,12 +6,11 @@
 # Logs
 *.log
 *.log.*
-past_trades.txt
 
 # SQLite Databases
-*.db
 *.sqlite
 *.sqlite3
+# trades.db is tracked for cloud execution sync
 
 # Python bytecode & cache
 __pycache__/
