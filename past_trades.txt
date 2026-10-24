@@ -35,3 +35,51 @@
 │ Status:         OPEN                                                         │
 └──────────────────────────────────────────────────────────────────────────────┘
 
+  ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┤
+  │ >>> [RESOLUTION EVENT]  2026-10-24 19:19:38 UTC                        │
+  │ Market ID:       6003528                                                  │
+  │ Outcome:         LOST                                                     │
+  │ Official Winner: YES                                                      │
+  │ Realized PnL:    $-2.00 pUSD                                              │
+  └┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘
+
+  ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┤
+  │ >>> [RESOLUTION EVENT]  2026-10-24 19:19:38 UTC                        │
+  │ Market ID:       6003553                                                  │
+  │ Outcome:         LOST                                                     │
+  │ Official Winner: YES                                                      │
+  │ Realized PnL:    $-1.80 pUSD                                              │
+  └┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ [TRADE RECOMMENDATION]  2026-10-24 20:04:04 UTC                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Order ID:       dry_aeafc949e40f483eb3c95d3c75ba9d67                         │
+│ Market ID:      6081440                                                      │
+│ Condition ID:   0x4d3c1480127a8bd623bbc61bab795da9a926a6f639ff193ab1ab156fefd78c85│
+│ Event:          Highest temperature in Sao Paulo on October 25?              │
+│ Question:       Will the highest temperature in Sao Paulo be 21°C on October │
+│ Action:         BUY NO                                                       │
+│ Model Prob:      98.5%                                                       │
+│ Market Price:   $0.855 (85.5%)                                              │
+│ Edge Detected:  +13.0%                                                       │
+│ Stake:          $ 1.62 pUSD                                                   │
+│ Status:         OPEN                                                         │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ [TRADE RECOMMENDATION]  2026-10-24 20:04:04 UTC                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Order ID:       dry_9397d61ba9be432882f9a068f9c7ce30                         │
+│ Market ID:      6074070                                                      │
+│ Condition ID:   0x1b487ff417d6f34d0b55e346a4de7b4175839e95522ef3ee1469dd835393f416│
+│ Event:          Highest temperature in Madrid on October 25?                 │
+│ Question:       Will the highest temperature in Madrid be 23°C on October 25?│
+│ Action:         BUY NO                                                       │
+│ Model Prob:      96.3%                                                       │
+│ Market Price:   $0.665 (66.5%)                                              │
+│ Edge Detected:  +29.8%                                                       │
+│ Stake:          $ 1.46 pUSD                                                   │
+│ Status:         OPEN                                                         │
+└──────────────────────────────────────────────────────────────────────────────┘
+
