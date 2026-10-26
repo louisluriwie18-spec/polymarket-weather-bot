@@ -83,3 +83,51 @@
 │ Status:         OPEN                                                         │
 └──────────────────────────────────────────────────────────────────────────────┘
 
+  ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┤
+  │ >>> [RESOLUTION EVENT]  2026-10-26 21:30:14 UTC                        │
+  │ Market ID:       6081440                                                  │
+  │ Outcome:         LOST                                                     │
+  │ Official Winner: YES                                                      │
+  │ Realized PnL:    $-1.62 pUSD                                              │
+  └┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘
+
+  ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┤
+  │ >>> [RESOLUTION EVENT]  2026-10-26 21:30:14 UTC                        │
+  │ Market ID:       6074070                                                  │
+  │ Outcome:         LOST                                                     │
+  │ Official Winner: YES                                                      │
+  │ Realized PnL:    $-1.46 pUSD                                              │
+  └┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ [TRADE RECOMMENDATION]  2026-10-26 22:10:34 UTC                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Order ID:       dry_5ec45677ae33433e95ec1437ecb166a9                         │
+│ Market ID:      6238918                                                      │
+│ Condition ID:   0x22a82127a419c5bbb8cea96e36ceaf5910c5f4f5539bbe1206e1ead6eb827be6│
+│ Event:          Highest temperature in Beijing on October 28?                │
+│ Question:       Will the highest temperature in Beijing be 16°C on October 28│
+│ Action:         BUY NO                                                       │
+│ Model Prob:      91.1%                                                       │
+│ Market Price:   $0.520 (52.0%)                                              │
+│ Edge Detected:  +39.1%                                                       │
+│ Stake:          $ 1.31 pUSD                                                   │
+│ Status:         OPEN                                                         │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ [TRADE RECOMMENDATION]  2026-10-26 22:10:34 UTC                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Order ID:       dry_acd8e651ad2646d29aa4525aa093676c                         │
+│ Market ID:      6192024                                                      │
+│ Condition ID:   0xeb00fb9213182b23d54d37bb96af26321a9e9b777d3ae1b59ee9f2d308d1747f│
+│ Event:          Highest temperature in Sao Paulo on October 27?              │
+│ Question:       Will the highest temperature in Sao Paulo be 21°C on October │
+│ Action:         BUY NO                                                       │
+│ Model Prob:      92.3%                                                       │
+│ Market Price:   $0.605 (60.5%)                                              │
+│ Edge Detected:  +31.8%                                                       │
+│ Stake:          $ 1.18 pUSD                                                   │
+│ Status:         OPEN                                                         │
+└──────────────────────────────────────────────────────────────────────────────┘
+
